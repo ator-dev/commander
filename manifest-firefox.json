@@ -27,7 +27,8 @@
 
 	"background": {
 		"scripts": [
-			"/dist/background.js"
+			"/dist/core/src/action-api.js",
+			"/dist/src/background.js"
 		]
 	},
 

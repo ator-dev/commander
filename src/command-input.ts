@@ -35,43 +35,6 @@ chrome.storage.local.get("popupClass").then(async storage => {
 	});
 });
 
-const getTabsInWindow = () =>
-	chrome.tabs.query({ lastFocusedWindow: true })
-;
-
-const evaluateExpression = (expressionString: string): number => {
-	const expression = expressionString.split(" ").map(node =>
-		node === "<length>"
-			? command.length
-			: [ "+", "-" ].includes(node) ? node : parseInt(node)
-	);
-	let result = 0;
-	let mode = "+";
-	expression.forEach(node => {
-		if (typeof node === "string") {
-			mode = node;
-		} else {
-			switch (mode) {
-			case "+": {
-				result += node;
-				break;
-			} case "-": {
-				result -= node;
-				break;
-			}}
-		}
-	});
-	return result;
-};
-
-const getTabIndex = (index: number, shift: number, tabCount: number) =>
-	shift >= 0
-		? (index + shift) % tabCount
-		: (tabCount - 1) + ((index - (tabCount - 1) + shift) % tabCount)
-;
-
-let tabInGroupId = -1;
-
 const commandEntered = async (commandNew: string, submit = false) => {
 	if (submit) {
 		const operation = operations.filter(({ operator, operands }) => operator === "complete" && (new RegExp(`\\b${operands[0].label}\\b`, "g")).test(commandNew))[0];
@@ -84,51 +47,18 @@ const commandEntered = async (commandNew: string, submit = false) => {
 	const operationsApplicable = operations
 		.filter(({ operator, operands }) => operator === "map" && (new RegExp(`\\b${operands[0].label}\\b`, "g")).test(command));
 	for (const { operands: [ pattern, action, replacement ] } of operationsApplicable) {
-		switch (action.label) {
-		case "tabs.highlight.shift": {
-			const tabs = await getTabsInWindow();
-			const tabSelected = tabs.find(tab => !tab.active && tab.highlighted);
-			const tabActiveIndex = tabs.findIndex(tab => tab.active);
-			const tabIndex = getTabIndex(tabActiveIndex, evaluateExpression(action.arguments[0]), tabs.length);
-			if (this.browser) {
-				chrome.tabs.update(tabs[tabIndex].id as number, { highlighted: true, active: false });
-				if (tabSelected) {
-					chrome.tabs.update(tabSelected.id as number, { highlighted: false });
-				}
-			} else {
-				tabInGroupId = tabs[tabIndex].id as number;
-				chrome.tabGroups.query({ title: "doExt" }).then(groups => {
-					groups.forEach(async ({ id: groupId }) => {
-						chrome.tabs.ungroup((await chrome.tabs.query({ groupId })).map(tab => tab.id as number));
-					});
-				});
-				chrome.tabs.group({ tabIds: tabInGroupId }).then(async value => {
-					chrome.tabGroups.update(value, {
-						title: "doExt",
-						color: "blue",
-					});
-				});
+		if (action.label.split(".")[0] === "meta") {
+			if (action.label === "meta.popup.close") {
+				close();
 			}
-			break;
-		} case "tabs.activate.shift": {
-			const tabs = await getTabsInWindow();
-			const tabIndex = getTabIndex(tabs.findIndex(tab => tab.active), evaluateExpression(action.arguments[0]), tabs.length);
-			chrome.tabs.update(tabs[tabIndex].id as number, { active: true });
-			break;
-		} case "tabs.activate.highlighted": {
-			const groupId = (await chrome.tabGroups.query({ title: "doExt" }))[0].id;
-			const tab = (await chrome.tabs.query(this.browser ? { highlighted: true, active: false } : { groupId }))[0];
-			chrome.tabs.update(tab.id as number, { active: true });
-			if (!this.browser) {
-				chrome.tabs.ungroup(tab.id as number);
-			}
-			break;
-		} case "meta.popup.close": {
-			close();
-			break;
-		} default: {
-			console.warn("unrecognised action", action);
-		}}
+			return;
+		}
+		chrome.runtime.sendMessage({
+			type: "invocation",
+			command,
+			key: action.label,
+			args: { shift: action.arguments[0] },
+		});
 		if (replacement !== undefined) {
 			command = replacement.label === "\"\"" ? "" : replacement.label;
 			if (input) {

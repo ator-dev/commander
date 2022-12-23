@@ -25,7 +25,7 @@
 	],
 
 	"background": {
-		"service_worker": "/dist/background.js"
+		"service_worker": "/dist/src/background.js"
 	},
 
 	"options_ui": {
